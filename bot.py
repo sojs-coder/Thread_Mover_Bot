@@ -17,7 +17,7 @@ intents = discord.Intents.all()
 bot = discord.Bot(command_prefix="!", intents=intents)
 
 @bot.slash_command(description="Move messages to threads")
-async def move(ctx, num_messages: int, thread_name: str, privacy: Option(str, "Is the thread public or private?",choices=["private","public"], required=False, defualt="public")):
+async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Should I respond on success?", choices=["silent","loud"], required=False, defualt="loud"),privacy: Option(str, "Is the thread public or private?",choices=["private","public"], required=False, defualt="public")):
     # Get the last num_messages messages from the channel
     messages = []
     thread_name = thread_name.lower()
@@ -48,6 +48,7 @@ async def move(ctx, num_messages: int, thread_name: str, privacy: Option(str, "I
         content = message.author.mention + " said: \n" + message.content
         await thread.send(content=content,files=[await f.to_file() for f in message.attachments])
     await ctx.channel.delete_messages(messages)
-    await ctx.respond(str(num_messages) + " moved to " + thread_name)
-
+    if silent == "loud":
+      await ctx.respond(str(num_messages) + " moved to " + thread_name)
+    
 bot.run(TOKEN)
