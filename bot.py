@@ -2,8 +2,6 @@ import discord
 from discord.ext import commands
 from discord.commands import Option
 import os
-from flask import Flask
-import threading
 
 map = {
     "public":discord.ChannelType.public_thread,
@@ -20,6 +18,9 @@ bot = discord.Bot(command_prefix="!", intents=intents)
 
 @bot.slash_command(description="Move messages to threads")
 async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Should I respond on success?", choices=["silent","loud"], required=False, defualt="loud"),privacy: Option(str, "Is the thread public or private?",choices=["private","public"], required=False, defualt="public")):
+    # Acknowledge the command immediately
+    await ctx.defer()
+    
     # Get the last num_messages messages from the channel
     messages = []
     thread_name = thread_name.lower()
@@ -54,18 +55,5 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
       await ctx.respond(str(num_messages) + " moved to " + thread_name)
     
 # Deploy a flask server to comply with Render's requirements
-app = Flask(__name__)
-
-@app.route("/")
-def home():
-    return "Hello, World!"
-
-def run_bot():
+if __name__ == "__main__":  
     bot.run(TOKEN)
-
-def run_app():
-    app.run(host='0.0.0.0', port=80)
-
-if __name__ == "__main__":
-    threading.Thread(target=run_bot).start()
-    threading.Thread(target=run_app).start()
