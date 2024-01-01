@@ -2,6 +2,8 @@ import discord
 from discord.ext import commands
 from discord.commands import Option
 import os
+from flask import Flask
+import threading
 
 map = {
     "public":discord.ChannelType.public_thread,
@@ -51,4 +53,19 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
     if silent == "loud":
       await ctx.respond(str(num_messages) + " moved to " + thread_name)
     
-bot.run(TOKEN)
+# Deploy a flask server to comply with Render's requirements
+app = Flask(__name__)
+
+@app.route("/")
+def home():
+    return "Hello, World!"
+
+def run_bot():
+    bot.run(TOKEN)
+
+def run_app():
+    app.run(host='0.0.0.0', port=80)
+
+if __name__ == "__main__":
+    threading.Thread(target=run_bot).start()
+    threading.Thread(target=run_app).start()
