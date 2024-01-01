@@ -25,8 +25,9 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
     messages = []
     thread_name = thread_name.lower()
     async for message in ctx.channel.history(limit=num_messages):
-        messages.append(message)
-
+        if message.author != bot.user:
+            messages.append(message)
+        
     threadExists = False
     for thread in ctx.guild.threads:
         if thread.name.lower() == thread_name.lower():
@@ -51,6 +52,7 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
         content = message.author.mention + " said: \n" + message.content
         await thread.send(content=content,files=[await f.to_file() for f in message.attachments])
     await ctx.channel.delete_messages(messages)
+    
     if silent == "loud":
       await ctx.respond(str(num_messages) + " moved to " + thread_name)
     
