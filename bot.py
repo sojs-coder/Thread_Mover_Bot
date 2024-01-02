@@ -30,7 +30,10 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
                 self_messages += 1
             
         # Acknowledge the command immediately
-        await ctx.defer()
+        if silent == "loud":
+            await ctx.defer()
+        else:
+            await ctx.defer(hidden=True)
         
         threadExists = False
         for thread in ctx.guild.threads:
@@ -64,6 +67,8 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
         
         if silent == "loud":
             await ctx.respond(str(num_messages - self_messages) + " moved to " + thread_name + ignore_str)
+        else:
+            await ctx.edit_original_message(content="")        
 
     except Exception as e:
         await ctx.respond(f"An error occurred: {e}")
