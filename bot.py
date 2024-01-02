@@ -19,9 +19,6 @@ bot = discord.Bot(command_prefix="!", intents=intents)
 @bot.slash_command(description="Move messages to threads")
 async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Should I respond on success?", choices=["silent","loud"], required=False, default="loud"), privacy: Option(str, "Is the thread public or private?",choices=["private","public"], required=False, defualt="public")):
     try:
-        # Acknowledge the command immediately
-        await ctx.defer()
-        
         # Get the last num_messages messages from the channel
         messages = []
         thread_name = thread_name.lower()
@@ -32,6 +29,9 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
             else:
                 self_messages += 1
             
+        # Acknowledge the command immediately
+        await ctx.defer()
+        
         threadExists = False
         for thread in ctx.guild.threads:
             if thread.name.lower() == thread_name.lower():
@@ -59,7 +59,7 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
         await ctx.channel.delete_messages(messages)
         
         if silent == "loud":
-            await ctx.respond(str(num_messages) + " moved to " + thread_name + ", " + str(self_messages) + "bot messages ignored")
+            await ctx.respond(str(num_messages) + " moved to " + thread_name + ", " + str(self_messages) + " bot messages ignored")
 
     except Exception as e:
         await ctx.respond(f"An error occurred: {e}")
