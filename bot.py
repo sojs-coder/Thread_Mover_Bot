@@ -64,7 +64,12 @@ async def move(ctx: commands.Context, num_messages: int, thread_name: str, silen
         
         await ctx.respond(str(num_messages - self_messages) + " moved to " + thread_name + ignore_str)
         if silent == "silent":
-            await ctx.message.delete()
+            # Manually delete the sent message
+            deleted_bot_message = []
+            async for message in ctx.channel.history(limit=1):
+                if message.author == bot.user:
+                    deleted_bot_message.append(message)
+            await ctx.channel.delete_messages(deleted_bot_message)
 
     except Exception as e:
         await ctx.respond(f"An error occurred: {e}")
