@@ -58,8 +58,12 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
             await thread.send(content=content,files=[await f.to_file() for f in message.attachments])
         await ctx.channel.delete_messages(messages)
         
+        ignore_str = ""
+        if self_messages > 0:
+            ignore_str = ", " + str(self_messages) + " bot messages ignored"
+        
         if silent == "loud":
-            await ctx.respond(str(num_messages) + " moved to " + thread_name + ", " + str(self_messages) + " bot messages ignored")
+            await ctx.respond(str(num_messages) + " moved to " + thread_name + ignore_str)
 
     except Exception as e:
         await ctx.respond(f"An error occurred: {e}")
