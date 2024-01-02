@@ -63,7 +63,7 @@ async def move(ctx, num_messages: int, thread_name: str, silent: Option(str, "Sh
             ignore_str = ", " + str(self_messages) + " bot messages ignored"
         
         if silent == "loud":
-            await ctx.respond(str(num_messages) + " moved to " + thread_name + ignore_str)
+            await ctx.respond(str(num_messages - self_messages) + " moved to " + thread_name + ignore_str)
 
     except Exception as e:
         await ctx.respond(f"An error occurred: {e}")
