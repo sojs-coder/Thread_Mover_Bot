@@ -62,7 +62,7 @@ async def move(ctx: commands.Context, num_messages: int, thread_name: str, silen
         if self_messages > 0:
             ignore_str = ", " + str(self_messages) + " bot messages ignored"
         
-        await ctx.respond(str(num_messages - self_messages) + " moved to " + thread_name + ignore_str)
+        await ctx.respond(str(num_messages - self_messages) + " moved to " + ". [" + thread_name + "](" + thread.jump_url + ")" + ignore_str)
         if silent == "silent":
             # Manually delete the sent message
             deleted_bot_message = []
