@@ -1,79 +1,210 @@
 import discord
 from discord.ext import commands
-from discord.commands import Option
 import os
+import asyncio
+from datetime import datetime, timezone
 
-map = {
-    "public":discord.ChannelType.public_thread,
-    "private":discord.ChannelType.private_thread
-}
-print(discord.__version__)
-def sSort(m):
-    return m.created_at
+print(f"Discord.py version: {discord.__version__}")
 
 TOKEN = os.environ.get("TOKEN")
 
-intents = discord.Intents.all()
-bot = discord.Bot(command_prefix="!", intents=intents)
+# Minimal intents - only non-privileged intents
+intents = discord.Intents.default()
+# Note: message_content is a privileged intent, but we don't need it for slash commands
+# intents.message_content = True  # This is privileged - disabled
+intents.guilds = True  # Required for guild/channel operations (non-privileged)
 
-@bot.slash_command(description="Move messages to threads")
-async def move(ctx: commands.Context, num_messages: int, thread_name: str, silent: Option(str, "Should I respond on success?", choices=["silent","loud"], required=False, default="loud"), privacy: Option(str, "Is the thread public or private?",choices=["private","public"], required=False, defualt="public")):
+bot = discord.Bot(intents=intents)
+
+def sort_by_creation_time(message):
+    """Sort messages by creation time"""
+    return message.created_at
+
+@bot.slash_command(description="Move recent messages to a thread")
+async def move(
+    ctx: discord.ApplicationContext,
+    num_messages: discord.Option(int, "Number of messages to move", min_value=1, max_value=100),
+    thread_name: discord.Option(str, "Name for the thread"),
+    visibility: discord.Option(str, "Who can see the bot's response?", choices=["private", "public"], default="public"),
+    thread_privacy: discord.Option(str, "Thread visibility", choices=["private", "public"], default="public")
+):
+    """Move recent messages to a thread"""
+    
+    # Check permissions
+    if not ctx.channel.permissions_for(ctx.guild.me).manage_messages:
+        return await ctx.respond("❌ I need 'Manage Messages' permission to delete messages.", ephemeral=True)
+    
+    if not ctx.channel.permissions_for(ctx.guild.me).create_public_threads:
+        return await ctx.respond("❌ I need 'Create Public Threads' permission.", ephemeral=True)
+    
+    if thread_privacy == "private" and not ctx.channel.permissions_for(ctx.guild.me).create_private_threads:
+        return await ctx.respond("❌ I need 'Create Private Threads' permission for private threads.", ephemeral=True)
+
     try:
-        # Get the last num_messages messages from the channel
+        # Determine if response should be ephemeral (private)
+        is_ephemeral = (visibility == "private")
+        
+        # Defer response to avoid timeout
+        await ctx.defer(ephemeral=is_ephemeral)
+        
+        # Collect messages (excluding bot messages)
         messages = []
-        thread_name = thread_name.lower()
-        self_messages = 0
-        async for message in ctx.channel.history(limit=num_messages):
-            if message.author != bot.user:
-                messages.append(message)
-            else:
-                self_messages += 1
-            
-        # Acknowledge the command immediately
-        await ctx.defer()
+        bot_messages_count = 0
         
-        threadExists = False
-        for thread in ctx.guild.threads:
-            if thread.name.lower() == thread_name.lower():
-                threadExists = thread
-
-        # Delete the last num_messages messages from the channel
-        finalMessageList = messages #existingMessages + messages
-        finalMessageList.sort(key=sSort)
-
-        # Create a new thread
-        thread = False
-        if threadExists:
-            thread = threadExists
-        else:
-            if privacy == "public":
-                whatsUp = await ctx.send("Creating thread "+thread_name+" and moving "+ str(num_messages))
-                thread = await whatsUp.create_thread(name=thread_name)
-            else:
-                thread = await ctx.channel.create_thread(name=thread_name)
+        async for message in ctx.channel.history(limit=num_messages + 50):  # Get extra to account for bot messages
+            if len(messages) >= num_messages:
+                break
                 
-        # Move the messages to the new thread
-        for message in finalMessageList:
-            content = message.author.mention + " said: \n" + message.content
-            await thread.send(content=content,files=[await f.to_file() for f in message.attachments])
-        await ctx.channel.delete_messages(messages)
+            if message.author.bot:
+                bot_messages_count += 1
+                continue
+                
+            messages.append(message)
         
-        ignore_str = ""
-        if self_messages > 0:
-            ignore_str = ", " + str(self_messages) + " bot messages ignored"
+        if not messages:
+            return await ctx.followup.send("❌ No messages found to move.", ephemeral=True)
         
-        await ctx.respond(str(num_messages - self_messages) + " moved to " + ". [" + thread_name + "](" + thread.jump_url + ")" + ignore_str)
-        if silent == "silent":
-            # Manually delete the sent message
-            deleted_bot_message = []
-            async for message in ctx.channel.history(limit=1):
-                if message.author == bot.user:
-                    deleted_bot_message.append(message)
-            await ctx.channel.delete_messages(deleted_bot_message)
-
+        # Sort messages chronologically
+        messages.sort(key=sort_by_creation_time)
+        
+        # Check if thread already exists
+        existing_thread = None
+        thread_name_lower = thread_name.lower()
+        
+        # Check active threads
+        for thread in ctx.guild.threads:
+            if thread.name.lower() == thread_name_lower and not thread.archived:
+                existing_thread = thread
+                break
+        
+        # Create or use existing thread
+        if existing_thread:
+            thread = existing_thread
+            thread_status = "Found existing thread"
+        else:
+            if thread_privacy == "public":
+                # Create a temporary message to create public thread from
+                temp_msg = await ctx.channel.send(f"📋 Creating thread: {thread_name}")
+                thread = await temp_msg.create_thread(name=thread_name)
+                await temp_msg.delete()  # Clean up the temporary message
+            else:
+                thread = await ctx.channel.create_thread(
+                    name=thread_name,
+                    type=discord.ChannelType.private_thread
+                )
+            thread_status = "Created new thread"
+        
+        # Move messages to thread
+        moved_count = 0
+        failed_moves = []
+        
+        for message in messages:
+            try:
+                # Prepare content with author mention
+                content_parts = [f"**{message.author.display_name}** ({message.author.mention})"]
+                
+                # Add timestamp
+                timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
+                content_parts.append(f"*{timestamp}*")
+                
+                # Add original content
+                if message.content:
+                    content_parts.append(message.content)
+                
+                content = "\n".join(content_parts)
+                
+                # Handle attachments
+                files = []
+                if message.attachments:
+                    for attachment in message.attachments[:10]:  # Limit to 10 attachments
+                        try:
+                            file = await attachment.to_file()
+                            files.append(file)
+                        except discord.HTTPException:
+                            content += f"\n*[Attachment: {attachment.filename} - failed to copy]*"
+                
+                # Send to thread
+                await thread.send(content=content, files=files)
+                moved_count += 1
+                
+            except Exception as e:
+                failed_moves.append(f"Message from {message.author.display_name}: {str(e)}")
+                print(f"Failed to move message {message.id}: {e}")
+        
+        # Delete original messages in batches
+        try:
+            # Filter messages that are less than 14 days old (bulk delete limit)
+            recent_messages = []
+            old_messages = []
+            two_weeks_ago = datetime.now(timezone.utc).timestamp() - (14 * 24 * 60 * 60)
+            
+            for msg in messages:
+                if msg.created_at.timestamp() > two_weeks_ago:
+                    recent_messages.append(msg)
+                else:
+                    old_messages.append(msg)
+            
+            # Bulk delete recent messages
+            if recent_messages:
+                # Split into chunks of 100 (Discord's limit)
+                for i in range(0, len(recent_messages), 100):
+                    chunk = recent_messages[i:i+100]
+                    await ctx.channel.delete_messages(chunk)
+            
+            # Delete old messages individually
+            for msg in old_messages:
+                try:
+                    await msg.delete()
+                    await asyncio.sleep(0.5)  # Rate limit protection
+                except discord.NotFound:
+                    pass  # Message already deleted
+            
+        except discord.Forbidden:
+            await ctx.followup.send("⚠️ Messages moved but couldn't delete originals (insufficient permissions).", ephemeral=True)
+        except Exception as e:
+            print(f"Error deleting messages: {e}")
+            await ctx.followup.send("⚠️ Messages moved but some originals couldn't be deleted.", ephemeral=True)
+        
+        # Prepare response message
+        response_parts = [
+            f"✅ {moved_count} message{'s' if moved_count != 1 else ''} moved to [{thread_name}]({thread.jump_url})",
+            f"📊 {thread_status}"
+        ]
+        
+        if bot_messages_count > 0:
+            response_parts.append(f"🤖 {bot_messages_count} bot messages ignored")
+        
+        if failed_moves:
+            response_parts.append(f"⚠️ {len(failed_moves)} messages failed to move")
+        
+        response = "\n".join(response_parts)
+        
+        # Send response (ephemeral setting already determined above)
+        await ctx.followup.send(response, ephemeral=is_ephemeral)
+            
+    except discord.Forbidden as e:
+        await ctx.followup.send(f"❌ Permission denied: {e}", ephemeral=True)
+    except discord.HTTPException as e:
+        await ctx.followup.send(f"❌ Discord API error: {e}", ephemeral=True)
     except Exception as e:
-        await ctx.respond(f"An error occurred: {e}")
-        print(e)
-        
-if __name__ == "__main__":  
+        await ctx.followup.send(f"❌ An unexpected error occurred: {e}", ephemeral=True)
+        print(f"Unexpected error in move command: {e}")
+
+@bot.event
+async def on_ready():
+    print(f"🤖 {bot.user} is ready!")
+    print(f"📊 Connected to {len(bot.guilds)} guild(s)")
+
+@bot.event
+async def on_application_command_error(ctx: discord.ApplicationContext, error: discord.DiscordException):
+    """Global error handler for slash commands"""
+    if isinstance(error, discord.CheckFailure):
+        await ctx.respond("❌ You don't have permission to use this command.", ephemeral=True)
+    elif isinstance(error, discord.CommandOnCooldown):
+        await ctx.respond(f"⏰ Command is on cooldown. Try again in {error.retry_after:.2f} seconds.", ephemeral=True)
+    else:
+        await ctx.respond("❌ An error occurred while processing the command.", ephemeral=True)
+        print(f"Command error: {error}")
+
+if __name__ == "__main__":
     bot.run(TOKEN)
