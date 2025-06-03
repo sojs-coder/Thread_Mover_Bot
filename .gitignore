@@ -1,1 +1,7 @@
 .env
+Include
+Lib
+Scripts
+pyvenv.cfg
+poetry.lock
+pyp

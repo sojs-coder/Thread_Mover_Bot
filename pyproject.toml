@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "python-template"
-version = "0.1.0"
+name = "Thread-Mover-Bot"
+version = "1.2.0"
 description = ""
-authors = ["Your Name <you@example.com>"]
+authors = ["SoJS <sojscoder@gmail.com>"]
 
 [tool.poetry.dependencies]
 python = ">=3.10.0,<3.11"
