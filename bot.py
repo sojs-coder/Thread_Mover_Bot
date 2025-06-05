@@ -8,11 +8,10 @@ print(f"Discord.py version: {discord.__version__}")
 
 TOKEN = os.environ.get("TOKEN")
 
-# Minimal intents - only non-privileged intents
+# Intents including message_content for reading message content
 intents = discord.Intents.default()
-# Note: message_content is a privileged intent, but we don't need it for slash commands
-# intents.message_content = True  # This is privileged - disabled
-intents.guilds = True  # Required for guild/channel operations (non-privileged)
+intents.message_content = True  # Required to read message content
+intents.guilds = True  # Required for guild/channel operations
 
 bot = discord.Bot(intents=intents)
 
@@ -107,9 +106,11 @@ async def move(
                 timestamp = message.created_at.strftime("%Y-%m-%d %H:%M:%S UTC")
                 content_parts.append(f"*{timestamp}*")
                 
-                # Add original content
+                # Add original content (this will now work with message_content intent)
                 if message.content:
                     content_parts.append(message.content)
+                else:
+                    content_parts.append("*[No text content]*")
                 
                 content = "\n".join(content_parts)
                 
@@ -122,6 +123,10 @@ async def move(
                             files.append(file)
                         except discord.HTTPException:
                             content += f"\n*[Attachment: {attachment.filename} - failed to copy]*"
+                
+                # Handle embeds
+                if message.embeds:
+                    content += f"\n*[{len(message.embeds)} embed(s) from original message]*"
                 
                 # Send to thread
                 await thread.send(content=content, files=files)
