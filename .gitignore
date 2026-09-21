@@ -5,3 +5,4 @@ Scripts
 pyvenv.cfg
 poetry.lock
 pyp
+__pycache__/
