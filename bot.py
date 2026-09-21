@@ -95,6 +95,7 @@ async def move(
         
         # Move messages to thread
         moved_count = 0
+        moved_messages = []
         failed_moves = []
         total_attachments = 0
         successful_attachments = 0
@@ -119,6 +120,7 @@ async def move(
                 
                 # Handle attachments
                 files = []
+                attachment_failed = False
                 if message.attachments:
                     total_attachments += len(message.attachments)
                     for attachment in message.attachments[:10]:  # Limit to 10 attachments
@@ -127,21 +129,26 @@ async def move(
                             max_size = 25 * 1024 * 1024  # 25 MB for non-nitro servers
                             if attachment.size > max_size:
                                 failed_attachments.append(f"{attachment.filename} (too large: {attachment.size / (1024*1024):.2f}MB)")
-                                content += f"\n*[Attachment: {attachment.filename} - too large ({attachment.size / (1024*1024):.2f}MB)]*"
+                                attachment_failed = True
                                 continue
 
                             # Download and prepare file for re-upload
                             file = await attachment.to_file()
                             files.append(file)
-                            successful_attachments += 1
                         except discord.HTTPException as e:
                             failed_attachments.append(f"{attachment.filename} (HTTP error: {str(e)})")
-                            content += f"\n*[Attachment: {attachment.filename} - failed to copy: {str(e)}]*"
+                            attachment_failed = True
                             print(f"Failed to copy attachment {attachment.filename}: {e}")
                         except Exception as e:
                             failed_attachments.append(f"{attachment.filename} (error: {str(e)})")
-                            content += f"\n*[Attachment: {attachment.filename} - error: {str(e)}]*"
+                            attachment_failed = True
                             print(f"Unexpected error copying attachment {attachment.filename}: {e}")
+
+                if attachment_failed:
+                    for file in files:
+                        file.close()
+                    failed_moves.append(f"Message from {message.author.display_name}: attachment copy failed")
+                    continue
                 
                 # Handle embeds
                 if message.embeds:
@@ -149,6 +156,8 @@ async def move(
                 
                 # Send to thread
                 await thread.send(content=content, files=files)
+                successful_attachments += len(files)
+                moved_messages.append(message)
                 moved_count += 1
                 
             except Exception as e:
@@ -162,7 +171,7 @@ async def move(
             old_messages = []
             two_weeks_ago = datetime.now(timezone.utc).timestamp() - (14 * 24 * 60 * 60)
             
-            for msg in messages:
+            for msg in moved_messages:
                 if msg.created_at.timestamp() > two_weeks_ago:
                     recent_messages.append(msg)
                 else:
